@@ -131,26 +131,43 @@ An agent handling "extract text from this PDF" loads `SKILL.md` and stops there.
 
 ## Discovery Index (Optional)
 
-Organizations may provide an index at `/.well-known/skills/index.json` that lists available skills:
+Organizations may provide an index at `/.well-known/skills/index.json` to enumerate available skills.
+
+### Index Format
 
 ```json
 {
   "skills": [
     {
-      "name": "pdf-processing",
-      "description": "Extract text and tables from PDF files.",
-      "path": "pdf-processing/"
+      "name": "wrangler",
+      "description": "Deploy and manage Cloudflare Workers projects."
     },
     {
       "name": "code-review",
-      "description": "Review code for bugs, security issues, and best practices.",
-      "path": "code-review/"
+      "description": "Review code for bugs, security issues, and best practices."
     }
   ]
 }
 ```
 
-**The index is optional by design.** An index typically requires a build step or dynamic generation, and must be kept in sync with actual skill directories. For simple deployments, publishers should be able to drop a `SKILL.md` into a directory without additional tooling.
+The index contains a single `skills` array. Each entry has two required fields:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Skill identifier. Must match the directory name under `/.well-known/skills/` and conform to the [Agent Skills naming specification](https://agentskills.io/specification#name-field): 1-64 characters, lowercase alphanumeric and hyphens only, no leading/trailing/consecutive hyphens. |
+| `description` | Yes | Brief description of what the skill does and when to use it. Max 1024 characters per the Agent Skills spec. |
+
+Clients derive the skill path from the `name` field directly:
+
+```
+/.well-known/skills/{name}/SKILL.md
+```
+
+For example, `"name": "wrangler"` maps to `/.well-known/skills/wrangler/SKILL.md`.
+
+### Why the Index is Optional
+
+An index typically requires a build step or dynamic generation, and must be kept in sync with actual skill directories. For simple deployments, publishers should be able to drop a `SKILL.md` into a directory without additional tooling.
 
 Agents must not assume an index exists. When no index is available, agents can:
 
