@@ -1,10 +1,11 @@
 /**
- * Astro API route that generates /.well-known/skills/index.json at build time.
+ * Next.js Route Handler that generates /.well-known/skills/index.json.
+ * Runs at build time when using static export, or at request time (cached via route config).
  *
  * Scans public/.well-known/skills/ for skill directories, parses YAML frontmatter
  * from each SKILL.md, and outputs a JSON index per the Agent Skills Discovery spec.
  *
- * Usage: Place this file at src/pages/.well-known/skills/index.json.ts
+ * Usage: Place this file at app/.well-known/skills/index.json/route.ts
  * Skills: Place skill directories at public/.well-known/skills/{name}/SKILL.md
  *
  * Requires: gray-matter (npm install gray-matter)
@@ -18,12 +19,23 @@ interface Skill {
 	description: string;
 }
 
+// Static generation - pre-render at build time
+export const dynamic = "force-static";
+
 export async function GET() {
 	const skillsDir = join(process.cwd(), "public/.well-known/skills");
 
-	const entries = await readdir(skillsDir, { withFileTypes: true });
-	const skillDirs = entries.filter((e) => e.isDirectory());
+	let entries;
+	try {
+		entries = await readdir(skillsDir, { withFileTypes: true });
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+			return Response.json({ skills: [] });
+		}
+		throw error;
+	}
 
+	const skillDirs = entries.filter((e) => e.isDirectory());
 	const skills: Skill[] = [];
 
 	for (const dir of skillDirs) {
@@ -38,6 +50,8 @@ export async function GET() {
 					name: data.name,
 					description: data.description,
 				});
+			} else {
+				console.warn(`Skill ${dir.name} missing required frontmatter (name/description)`);
 			}
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
