@@ -9,17 +9,19 @@
 # Usage: Place in cgi-bin/ and configure your server to serve it at /.well-known/skills/index.json
 # Skills: Place skill directories at /var/www/html/.well-known/skills/{name}/SKILL.md
 #
+# Note: Only single-line name/description values are supported (no YAML multi-line syntax)
+#
 # Requires: Perl (comes with your OS since 1987)
 #
 use strict;
 use warnings;
-use File::Basename;
 use JSON::PP;
 
 # Configure this path to match your setup
 my $skills_dir = $ENV{SKILLS_DIR} || '/var/www/html/.well-known/skills';
 
-print "Content-Type: application/json\r\n\r\n";
+print "Content-Type: application/json\r\n";
+print "Cache-Control: public, max-age=300\r\n\r\n";
 
 my @skills;
 
@@ -27,6 +29,7 @@ if (opendir(my $dh, $skills_dir)) {
     while (my $entry = readdir($dh)) {
         next if $entry =~ /^\./;  # Skip hidden files
         my $skill_path = "$skills_dir/$entry";
+        next if -l $skill_path;   # Skip symlinks (security)
         next unless -d $skill_path;  # Skip non-directories
         
         my $skill_md = "$skill_path/SKILL.md";
