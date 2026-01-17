@@ -123,18 +123,26 @@ Organizations may provide an index at `/.well-known/skills/index.json` that list
     {
       "name": "pdf-processing",
       "description": "Extract text and tables from PDF files.",
-      "path": "/pdf-processing/"
+      "path": "pdf-processing/"
     },
     {
       "name": "code-review",
       "description": "Review code for bugs, security issues, and best practices.",
-      "path": "/code-review/"
+      "path": "code-review/"
     }
   ]
 }
 ```
 
-Agents should not assume an index exists. When no index is available, agents may attempt to fetch known skill paths directly.
+**The index is optional by design.** An index typically requires a build step or dynamic generation, and must be kept in sync with actual skill directories. For simple deployments, publishers should be able to drop a `SKILL.md` into a directory without additional tooling.
+
+Agents must not assume an index exists. When no index is available, agents can:
+
+- Probe known skill paths directly (e.g., `/.well-known/skills/wrangler/SKILL.md`)
+- Parse the YAML frontmatter from `SKILL.md` to extract `name` and `description`
+- Follow relative links within `SKILL.md` to discover related resources
+
+This aligns with the [progressive disclosure model](https://agentskills.io/specification#progressive-disclosure) in the Agent Skills spec - the `SKILL.md` itself serves as the source of truth for a skill's metadata and references.
 
 ## Examples
 
@@ -216,6 +224,24 @@ Clients should:
 - Handle redirects (3xx responses)
 - Respect cache headers
 - Gracefully handle missing skills or indexes
+
+## Client Implementation
+
+Clients discovering skills from a well-known endpoint should:
+
+1. **Attempt to fetch `index.json` first.** If it exists (200 response), use it to enumerate available skills.
+
+2. **Fall back to direct probing.** If the index returns 404, probe known skill paths directly. Clients may maintain a list of common skill names or accept skill names from user configuration.
+
+3. **Parse `SKILL.md` frontmatter for metadata.** When no index exists, extract `name` and `description` from the YAML frontmatter. This avoids requiring publishers to maintain a separate index.
+
+4. **Resolve relative links from `SKILL.md`.** Supporting resources (scripts, references, assets) are referenced via relative paths. Resolve these against the skill directory URL:
+   - `SKILL.md` at `/.well-known/skills/wrangler/SKILL.md`
+   - Reference `scripts/deploy.sh` resolves to `/.well-known/skills/wrangler/scripts/deploy.sh`
+
+5. **Fetch resources lazily.** Only fetch referenced files when the agent needs them. Do not crawl the entire skill directory upfront.
+
+6. **Cache aggressively.** Skills change infrequently. Respect `Cache-Control` headers and consider caching `SKILL.md` content for the duration of a session.
 
 ## Security Considerations
 
