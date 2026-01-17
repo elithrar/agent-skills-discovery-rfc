@@ -4,6 +4,22 @@
 **Version**: 0.1  
 **Date**: 2026-01-17
 
+## Table of Contents
+
+1. [Abstract](#abstract)
+2. [Problem](#problem)
+3. [Solution](#solution)
+4. [URI Structure](#uri-structure)
+5. [Skill Directory Contents](#skill-directory-contents)
+6. [Progressive Discovery](#progressive-discovery)
+7. [Discovery Index (Optional)](#discovery-index-optional)
+8. [Examples](#examples)
+9. [HTTP Considerations](#http-considerations)
+10. [Client Implementation](#client-implementation)
+11. [Security Considerations](#security-considerations)
+12. [Relationship to Existing Specifications](#relationship-to-existing-specifications)
+13. [References](#references)
+
 ## Abstract
 
 This document defines a mechanism for discovering [Agent Skills](https://agentskills.io/) using the `.well-known` URI path prefix as specified in [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615). Skills are currently scattered across GitHub repositories, documentation sites, in other sources. A well-known URI provides a predictable location for agents and tools to discover skills published by an organization or project.
