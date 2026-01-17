@@ -259,6 +259,8 @@ Clients discovering skills from a well-known endpoint should:
 
 6. **Cache aggressively.** Skills change infrequently. Respect `Cache-Control` headers and consider caching `SKILL.md` content for the duration of a session.
 
+7. **Gate script execution.** Skills may include executable scripts. Clients should prompt for user confirmation before running any code from a skill, or require explicit opt-in via configuration. Consider sandboxing execution environments and restricting filesystem/network access. Never execute scripts from untrusted origins without user approval.
+
 ## Security Considerations
 
 The security considerations from [RFC 8615 Section 4](https://datatracker.ietf.org/doc/html/rfc8615#section-4) apply. Additional considerations for skills:
