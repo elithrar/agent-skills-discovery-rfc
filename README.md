@@ -12,7 +12,7 @@
 4. [URI Structure](#uri-structure)
 5. [Skill Directory Contents](#skill-directory-contents)
 6. [Progressive Discovery](#progressive-discovery)
-7. [Discovery Index (Optional)](#discovery-index-optional)
+7. [Discovery Index](#discovery-index)
 8. [Examples](#examples)
 9. [HTTP Considerations](#http-considerations)
 10. [Client Implementation](#client-implementation)
@@ -50,7 +50,7 @@ This provides a **single, predictable location** where agents and tooling can di
 The well-known skills path uses this hierarchy:
 
 ```
-/.well-known/skills/index.json          # Skills index (optional)
+/.well-known/skills/index.json          # Required: skills index
 /.well-known/skills/{skill-name}/       # Skill directory
 /.well-known/skills/{skill-name}/SKILL.md
 ```
@@ -89,7 +89,7 @@ Skills use a three-level loading pattern to manage context efficiently:
 | 2 | Full `SKILL.md` body | When skill is activated | < 5k tokens recommended |
 | 3 | Referenced files (scripts, references, assets) | On demand, as needed | Unlimited |
 
-**Level 1: Index metadata.** Agents fetch `index.json` (or probe known paths) to learn what skills exist. Only the name and description are loaded initially.
+**Level 1: Index metadata.** Agents fetch `index.json` to learn what skills exist and prefetch their files. Only the name and description are loaded into context initially.
 
 **Level 2: Skill instructions.** When a task matches a skill's description, the agent fetches `SKILL.md` and loads its full instructions into context.
 
@@ -129,9 +129,9 @@ For complex tables with merged cells, see [references/TABLES.md](references/TABL
 
 An agent handling "extract text from this PDF" loads `SKILL.md` and stops there. An agent handling "fill out this tax form" follows the link to `references/FORMS.md`. The table extraction script and reference stay unfetched until needed.
 
-## Discovery Index (Optional)
+## Discovery Index
 
-Organizations may provide an index at `/.well-known/skills/index.json` to enumerate available skills.
+Publishers MUST provide an index at `/.well-known/skills/index.json`. The index enumerates all available skills and their files, enabling clients to discover and prefetch skill resources in a single request.
 
 ### Index Format
 
@@ -140,22 +140,31 @@ Organizations may provide an index at `/.well-known/skills/index.json` to enumer
   "skills": [
     {
       "name": "wrangler",
-      "description": "Deploy and manage Cloudflare Workers projects."
+      "description": "Deploy and manage Cloudflare Workers projects.",
+      "files": [
+        "SKILL.md",
+        "references/commands.md",
+        "references/configuration.md"
+      ]
     },
     {
       "name": "code-review",
-      "description": "Review code for bugs, security issues, and best practices."
+      "description": "Review code for bugs, security issues, and best practices.",
+      "files": [
+        "SKILL.md"
+      ]
     }
   ]
 }
 ```
 
-The index contains a single `skills` array. Each entry has two required fields:
+The index contains a single `skills` array. Each entry has these fields:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Skill identifier. Must match the directory name under `/.well-known/skills/` and conform to the [Agent Skills naming specification](https://agentskills.io/specification#name-field): 1-64 characters, lowercase alphanumeric and hyphens only, no leading/trailing/consecutive hyphens. |
+| `name` | Yes | Skill identifier. MUST match the directory name under `/.well-known/skills/` and conform to the [Agent Skills naming specification](https://agentskills.io/specification#name-field): 1-64 characters, lowercase alphanumeric and hyphens only, no leading/trailing/consecutive hyphens. |
 | `description` | Yes | Brief description of what the skill does and when to use it. Max 1024 characters per the Agent Skills spec. |
+| `files` | Yes | Array of all files in the skill directory, enabling clients to prefetch resources. See [Files Array](#files-array) for format requirements. |
 
 Clients derive the skill path from the `name` field directly:
 
@@ -165,17 +174,31 @@ Clients derive the skill path from the `name` field directly:
 
 For example, `"name": "wrangler"` maps to `/.well-known/skills/wrangler/SKILL.md`.
 
-### Why the Index is Optional
+### Files Array
 
-An index typically requires a build step or dynamic generation, and must be kept in sync with actual skill directories. For simple deployments, publishers should be able to drop a `SKILL.md` into a directory without additional tooling.
+The `files` array lists all files in the skill directory. This enables clients to prefetch and locally cache skill resources, eliminating network requests during task execution.
 
-Agents must not assume an index exists. When no index is available, agents can:
+**Requirements:**
 
-- Probe known skill paths directly (e.g., `/.well-known/skills/wrangler/SKILL.md`)
-- Parse the YAML frontmatter from `SKILL.md` to extract `name` and `description`
-- Follow relative links within `SKILL.md` to discover related resources
+- The array MUST be non-empty
+- The array MUST include `SKILL.md`
+- `SKILL.md` SHOULD be the first entry
+- Paths MUST be relative to the skill directory
+- Paths MUST use forward slash (`/`) as the separator
+- Paths MUST NOT begin with `/` or contain `..` segments
+- Paths MUST contain only printable ASCII characters (0x20-0x7E), excluding `\`, `?`, `#`, `[`, `]`, and control characters
+- Each path MUST correspond to an actual file served at `/.well-known/skills/{name}/{path}`
 
-This aligns with the [progressive disclosure model](https://agentskills.io/specification#progressive-disclosure) in the Agent Skills spec - the `SKILL.md` itself serves as the source of truth for a skill's metadata and references.
+**Example paths:**
+
+```
+SKILL.md                    # Required
+scripts/deploy.sh           # Script in scripts/ directory  
+references/API.md           # Reference documentation
+assets/config.template.yaml # Asset file
+```
+
+**Caching and progressive disclosure.** Clients MAY prefetch all files listed in the `files` array for local caching. However, clients MUST NOT load all files into context simultaneously. The [progressive disclosure model](https://agentskills.io/specification#optional-directories) still applies: load `SKILL.md` first, then fetch supporting resources on demand as the task requires.
 
 ## Examples
 
@@ -244,39 +267,40 @@ For schema requirements, see [references/SCHEMA.md](references/SCHEMA.md).
 
 ## HTTP Considerations
 
-Servers should:
+Servers MUST:
 
-- Return `SKILL.md` files with `text/markdown` or `text/plain` content type
-- Return the index (if provided) with `application/json` content type
+- Serve `/.well-known/skills/index.json` with `application/json` content type
+- Serve `SKILL.md` files with `text/markdown` or `text/plain` content type
 - Support `GET` and `HEAD` methods
-- Return `404 Not Found` for skills that do not exist
-- Consider setting appropriate `Cache-Control` headers
+- Return `404 Not Found` for skills or files that do not exist
 
-Clients should:
+Servers SHOULD:
+
+- Set appropriate `Cache-Control` headers
+
+Clients MUST:
 
 - Handle redirects (3xx responses)
 - Respect cache headers
-- Gracefully handle missing skills or indexes
 
 ## Client Implementation
 
-Clients discovering skills from a well-known endpoint should:
+Clients discovering skills from a well-known endpoint MUST:
 
-1. **Attempt to fetch `index.json` first.** If it exists (200 response), use it to enumerate available skills.
+1. **Fetch `index.json`.** Retrieve `/.well-known/skills/index.json` to enumerate available skills and their files.
 
-2. **Fall back to direct probing.** If the index returns 404, probe known skill paths directly. Clients may maintain a list of common skill names or accept skill names from user configuration.
+2. **Prefetch skill files.** Use the `files` array to download all resources for discovered skills. Cache locally to avoid network requests during task execution.
 
-3. **Parse `SKILL.md` frontmatter for metadata.** When no index exists, extract `name` and `description` from the YAML frontmatter. This avoids requiring publishers to maintain a separate index.
+3. **Apply progressive disclosure.** Load only `name` and `description` at discovery time. Load `SKILL.md` when a skill is activated. Load supporting resources (scripts, references, assets) on demand as the task requires.
 
-4. **Resolve relative links from `SKILL.md`.** Supporting resources (scripts, references, assets) are referenced via relative paths. Resolve these against the skill directory URL:
-   - `SKILL.md` at `/.well-known/skills/wrangler/SKILL.md`
-   - Reference `scripts/deploy.sh` resolves to `/.well-known/skills/wrangler/scripts/deploy.sh`
+4. **Resolve relative paths.** Files listed in the `files` array are relative to the skill directory. Resolve against the skill URL:
+   - Skill: `/.well-known/skills/wrangler/`
+   - File entry: `scripts/deploy.sh`
+   - Resolved URL: `/.well-known/skills/wrangler/scripts/deploy.sh`
 
-5. **Fetch resources lazily.** Only fetch referenced files when the agent needs them. Do not crawl the entire skill directory upfront.
+5. **Cache aggressively.** Skills change infrequently. Respect `Cache-Control` headers and consider caching content for the duration of a session.
 
-6. **Cache aggressively.** Skills change infrequently. Respect `Cache-Control` headers and consider caching `SKILL.md` content for the duration of a session.
-
-7. **Gate script execution.** Skills may include executable scripts. Clients should prompt for user confirmation before running any code from a skill, or require explicit opt-in via configuration. Consider sandboxing execution environments and restricting filesystem/network access. Never execute scripts from untrusted origins without user approval.
+6. **Gate script execution.** Skills may include executable scripts. Clients SHOULD prompt for user confirmation before running any code from a skill, or require explicit opt-in via configuration. Consider sandboxing execution environments and restricting filesystem/network access. Never execute scripts from untrusted origins without user approval.
 
 ## Security Considerations
 

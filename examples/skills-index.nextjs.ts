@@ -3,20 +3,38 @@
  * Runs at build time when using static export, or at request time (cached via route config).
  *
  * Scans public/.well-known/skills/ for skill directories, parses YAML frontmatter
- * from each SKILL.md, and outputs a JSON index per the Agent Skills Discovery spec.
+ * from each SKILL.md, collects all files, and outputs a JSON index per the Agent Skills Discovery spec.
  *
  * Usage: Place this file at app/.well-known/skills/index.json/route.ts
  * Skills: Place skill directories at public/.well-known/skills/{name}/SKILL.md
  *
  * Requires: gray-matter (npm install gray-matter)
  */
-import { readdir, readFile } from "fs/promises";
-import { join } from "path";
+import { readdir, readFile, stat } from "fs/promises";
+import { join, relative } from "path";
 import matter from "gray-matter";
 
 interface Skill {
 	name: string;
 	description: string;
+	files: string[];
+}
+
+/** Recursively collect all files in a directory, returning paths relative to baseDir */
+async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
+	const entries = await readdir(dir, { withFileTypes: true });
+	const files: string[] = [];
+
+	for (const entry of entries) {
+		const fullPath = join(dir, entry.name);
+		if (entry.isDirectory()) {
+			files.push(...(await collectFiles(fullPath, baseDir)));
+		} else if (entry.isFile()) {
+			files.push(relative(baseDir, fullPath));
+		}
+	}
+
+	return files;
 }
 
 // Static generation - pre-render at build time
@@ -39,16 +57,25 @@ export async function GET() {
 	const skills: Skill[] = [];
 
 	for (const dir of skillDirs) {
-		const skillPath = join(skillsDir, dir.name, "SKILL.md");
+		const skillDirPath = join(skillsDir, dir.name);
+		const skillPath = join(skillDirPath, "SKILL.md");
 
 		try {
 			const content = await readFile(skillPath, "utf-8");
 			const { data } = matter(content);
 
 			if (data.name && data.description) {
+				const allFiles = await collectFiles(skillDirPath, skillDirPath);
+				// Ensure SKILL.md is first, then sort the rest
+				const files = [
+					"SKILL.md",
+					...allFiles.filter((f) => f !== "SKILL.md").sort(),
+				];
+
 				skills.push({
 					name: data.name,
 					description: data.description,
+					files,
 				});
 			} else {
 				console.warn(`Skill ${dir.name} missing required frontmatter (name/description)`);
